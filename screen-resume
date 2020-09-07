@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 screen_resume() {
     TERMINAL=$(which urxvt) #change to desired terminal
