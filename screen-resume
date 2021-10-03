@@ -1,13 +1,26 @@
 #!/bin/bash
 
+__normalize_encoding() { iconv -f "$(file -b --mime-encoding "${1}")" "${1}"; }
+__truncate_columns() { sed "s/\([^,]\{0,${1}\}\)[^,]*/\1/g"; }
+__collapse_blank_lines() { sed '/^$/N;/^\n$/D'; }
+
+screen_peek() {
+    cols="${2}"
+    if test -z "${cols}"; then cols=80; fi
+    __normalize_encoding "$1" \
+        | __truncate_columns "${cols}" \
+        | __collapse_blank_lines
+}
+
 screen_resume() {
     TERMINAL=$(which urxvt) #change to desired terminal
-    detached="Detached"
-    pids=($(screen -ls | awk '/[0-9].*'${detached}'/ { split($1, x, "."); print x[1]";"$1 }'))
+    pstags="Detached"
+    pids=($(screen -ls | awk '/[0-9].*'${pstags}'/\
+                 { split($1, x, "."); print x[1]";"$1 }'))
 
     [[ "${#pids[@]}" -eq 0 ]] && return 1
 
-    printf "\nThere are (${detached}) screens on:\n\n"
+    printf "\nThere are (${pstags}) screens on:\n\n"
 
     arr=()
     for i in "${!pids[@]}"
@@ -19,7 +32,7 @@ screen_resume() {
 
 	IFS=$OIFS
 
-	printf "[%s] %s" $i ${x[1]} | awk '{print "\t"$1"\t"$2"\t('${detached}')"}'
+	printf "[%s] %s" $i ${x[1]} | awk '{print "\t"$1"\t"$2"\t('${pstags}')"}'
     done
 
     printf "\nSelect [#] to resume, [a] to resume all or [Enter] to skip: "
