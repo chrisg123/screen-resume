@@ -3,8 +3,18 @@
 __normalize_encoding() { iconv -f "$(file -b --mime-encoding "${1}")" "${1}"; }
 __truncate_columns() { sed "s/\([^,]\{0,${1}\}\)[^,]*/\1/g"; }
 __collapse_blank_lines() { sed '/^$/N;/^\n$/D'; }
+__printopt() { printf " %s\t%s\n" "${1}" "${2}"; }
+__printopt2() { printf "  %-10s : %s\n" "${1}" "${2}"; }
+__usage() {
+    printf "Usage: %s opts\n\n" "${0}"
+    printf "Options:\n"
+    __printopt "-h" "print this help message."
+    __printopt "-a" "Include attached sessions."
+}
 
 screen_peek() {
+    #screen -X -S 18611 hardcopy /tmp/tmp1
+
     cols="${2}"
     if test -z "${cols}"; then cols=80; fi
     __normalize_encoding "$1" \
@@ -13,51 +23,104 @@ screen_peek() {
 }
 
 screen_resume() {
+    optstring="ha"
+    attached=0
+    while getopts ${optstring} arg; do
+        case ${arg} in
+            h)
+                __usage
+                exit 0
+                ;;
+            a)
+                attached=1
+                ;;
+            *)
+                __usage
+                exit 1
+                ;;
+        esac
+    done
+
     TERMINAL=$(which urxvt) #change to desired terminal
     pstags="Detached"
+
+    if test "${attached}" -eq 1; then
+        pstags="${pstags}|Attached"
+    fi
+
     pids=($(screen -ls | awk '/[0-9].*'${pstags}'/\
                  { split($1, x, "."); print x[1]";"$1 }'))
 
-    [[ "${#pids[@]}" -eq 0 ]] && return 1
+    count="${#pids[@]}"
+
+    [[ "${count}" -eq 0 ]] && return 1
 
     printf "\nThere are (${pstags}) screens on:\n\n"
 
     arr=()
+
     for i in "${!pids[@]}"
     do
-	OIFS=$IFS; IFS=";"
+        OIFS=$IFS; IFS=";"
 
-	x=(${pids[i]})
-	arr[i]=${x[0]}
+        x=(${pids[i]})
+        arr[i]=${x[0]}
 
-	IFS=$OIFS
-
-	printf "[%s] %s" $i ${x[1]} | awk '{print "\t"$1"\t"$2"\t('${pstags}')"}'
+        IFS=$OIFS
+        z=$(screen -ls | awk '/'${x}'/ { print $2 }')
+        printf '  [%s] %-20s %s\n' $i ${x[1]} ${z}
     done
 
-    printf "\nSelect [#] to resume, [a] to resume all or [Enter] to skip: "
+    idx=$(($count - 1))
+
+    printf "\nOptions:\n"
+    __printopt2 "0$(test $idx -gt 0 && echo "-${idx}")[p]" \
+                "Number to resume. Append p to peek."
+    __printopt2 "a" "to resume all"
+    __printopt2 "enter" "to skip"
+    printf "\nChoose: "
+
     read choice
     printf "\n"
 
     if [[ "$choice" = "a" ]]; then
-	for i in "${!arr[@]}"
-	do
-	    pid="${arr[$i]}"
-	    if [[ "$i" -eq "${#arr[@]}-1" ]]; then
-		screen -r ${pid}
-	    else
-		"$TERMINAL" -e sh -c "screen -r ${pid}" &
-	    fi
-	done
-	return 0
+        for i in "${!arr[@]}"
+        do
+            pid="${arr[$i]}"
+            if [[ "$i" -eq "${#arr[@]}-1" ]]; then
+                screen -r ${pid}
+            else
+                "$TERMINAL" -e sh -c "screen -r ${pid}" &
+            fi
+        done
+        return 0
     fi
 
+    peek=
+    if [ "${choice: -1}" == "p" ]; then
+        peek=1
+        choice=${choice%?}
+    fi
+    echo $peek
     if [[ "$choice" =~ ^[0-9]+$ ]]; then
-	pid="${arr[$choice]}"
-	if [[ -n "${pid}"  ]]; then
-	    screen -r ${pid}
-	    return 0
-	fi
+
+        pid="${arr[$choice]}"
+        if [[ -n "${pid}"  ]]; then
+
+            if [[ ! -z $peek ]]; then
+                f=$(mktemp)
+                screen -S "${pid}" -X hardcopy "${f}"
+                screen_peek "${f}" | less
+                rm -f ${f}
+            else
+                screen -dr ${pid}
+            fi
+
+            return 0
+        fi
     fi
     return 1
 }
+
+(return 0 2>/dev/null) || screen_resume $@
+
