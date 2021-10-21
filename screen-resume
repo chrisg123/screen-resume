@@ -13,8 +13,6 @@ __usage() {
 }
 
 screen_peek() {
-    #screen -X -S 18611 hardcopy /tmp/tmp1
-
     cols="${2}"
     if test -z "${cols}"; then cols=80; fi
     __normalize_encoding "$1" \
@@ -101,7 +99,7 @@ screen_resume() {
         peek=1
         choice=${choice%?}
     fi
-    echo $peek
+
     if [[ "$choice" =~ ^[0-9]+$ ]]; then
 
         pid="${arr[$choice]}"
