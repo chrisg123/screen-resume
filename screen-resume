@@ -7,7 +7,7 @@ __printopt() { printf " %s\t%s\n" "${1}" "${2}"; }
 __printopt2() { printf "  %-10s : %s\n" "${1}" "${2}"; }
 __usage() {
     printf "Usage: %s opts\n\n" "${0}"
-    printf "Options:\n"
+n    printf "Options:\n"
     __printopt "-h" "print this help message."
     __printopt "-a" "Include attached sessions."
 }
@@ -19,32 +19,9 @@ screen_peek() {
         | __truncate_columns "${cols}" \
         | __collapse_blank_lines
 }
-
-screen_resume() {
-    optstring="ha"
-    attached=0
-    while getopts ${optstring} arg; do
-        case ${arg} in
-            h)
-                __usage
-                exit 0
-                ;;
-            a)
-                attached=1
-                ;;
-            *)
-                __usage
-                exit 1
-                ;;
-        esac
-    done
-
-    TERMINAL=$(which urxvt) #change to desired terminal
-    pstags="Detached"
-
-    if test "${attached}" -eq 1; then
-        pstags="${pstags}|Attached"
-    fi
+__screen_resume() {
+    pstags="${1}"
+    terminal="${2}"
 
     pids=($(screen -ls | awk '/[0-9].*'${pstags}'/\
                  { split($1, x, "."); print x[1]";"$1 }'))
@@ -79,6 +56,10 @@ screen_resume() {
     printf "\nChoose: "
 
     read choice
+    if [ ${#choice} -eq 0 ]; then
+        return 1
+    fi
+
     printf "\n"
 
     if [[ "$choice" = "a" ]]; then
@@ -88,7 +69,7 @@ screen_resume() {
             if [[ "$i" -eq "${#arr[@]}-1" ]]; then
                 screen -r ${pid}
             else
-                "$TERMINAL" -e sh -c "screen -r ${pid}" &
+                "$terminal" -e sh -c "screen -r ${pid}" &
             fi
         done
         return 0
@@ -110,6 +91,7 @@ screen_resume() {
                 screen -S "${pid}" -X hardcopy "${f}"
                 screen_peek "${f}" | less
                 rm -f ${f}
+                return 2
             else
                 screen -dr ${pid}
             fi
@@ -118,6 +100,47 @@ screen_resume() {
         fi
     fi
     return 1
+
+}
+screen_resume() {
+    terminal=$(which urxvt) #change to desired terminal
+    optstring="ha"
+    attached=0
+    while getopts ${optstring} arg; do
+        case ${arg} in
+            h)
+                __usage
+                exit 0
+                ;;
+            a)
+                attached=1
+                ;;
+            *)
+                __usage
+                exit 1
+                ;;
+        esac
+    done
+
+    pstags="Detached"
+
+    if test "${attached}" -eq 1; then
+        pstags="${pstags}|Attached"
+    fi
+
+    # not resumed, resumed, continue loop
+
+    while :
+    do
+        printf "\033c"
+        __screen_resume "${pstags}" "${terminal}"
+        result=$?
+        if test "${result}" -eq 2; then
+            continue
+        fi
+        return "${result}"
+    done
+
 }
 
 (return 0 2>/dev/null) || screen_resume $@
